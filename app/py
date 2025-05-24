@@ -1,0 +1,107 @@
+from flask import Flask, render_template, request, redirect, url_for
+from datetime import datetime
+
+app = Flask(__name__)
+
+soz_verenler = []
+soz_sayaci = 0
+kayitli_nickler = set()
+son_soz_tarihi = None
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    global soz_sayaci, son_soz_tarihi
+    if request.method == "POST":
+        nick = request.form["nick"].strip()
+        mesaj = request.form["mesaj"].strip()
+        if nick and nick not in kayitli_nickler:
+            soz_sayaci += 1
+            zaman = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+            soz_verenler.append({"nick": nick, "mesaj": mesaj, "tarih": zaman})
+            kayitli_nickler.add(nick)
+            son_soz_tarihi = zaman
+        return redirect(url_for("index"))
+    son_bes_kisi = list(reversed(soz_verenler[-5:]))
+    return render_template("index.html", soz_sayaci=soz_sayaci, son_soz_tarihi=son_soz_tarihi, son_bes_kisi=son_bes_kisi)
+
+@app.route("/bilgilendirme")
+def bilgilendirme():
+    return render_template("bilgi.html")
+
+@app.route("/kurbanlar")
+def kurbanlar():
+    return render_template("kurbanlar.html")
+
+def hesapla_kisa(cevaplar):
+    puan = sum(cevaplar)
+    karbon_ay = puan * 20
+    karbon_yil = karbon_ay * 12
+    su_ay = puan * 150
+    su_yil = su_ay * 12
+    oran = round((puan / (len(cevaplar) * 4)) * 100)
+    if oran < 30:
+        durum = "Yaşam tarzınız çevre dostu."
+    elif oran < 60:
+        durum = "Ortalama çevresel etki. Geliştirme alanlarınız var."
+    else:
+        durum = "Yüksek çevresel etki! Değişim gerekli olabilir."
+    return karbon_ay, karbon_yil, su_ay, su_yil, oran, durum
+
+def hesapla_detayli(cevaplar):
+    puan = sum(cevaplar)
+    karbon_ay = round(puan * 22.7, 2)
+    karbon_yil = round(karbon_ay * 12, 2)
+    su_ay = round(puan * 173.5, 2)
+    su_yil = round(su_ay * 12, 2)
+    oran = round((puan / (len(cevaplar) * 4)) * 100)
+    if oran < 30:
+        durum = "Detaylı test sonucu: yaşam tarzınız oldukça çevreci."
+    elif oran < 60:
+        durum = "Detaylı test sonucu: ortalama düzeyde etki var, azaltılabilir."
+    else:
+        durum = "Detaylı test sonucu: çevre üzerindeki etkiniz yüksek, iyileştirme şart."
+    return karbon_ay, karbon_yil, su_ay, su_yil, oran, durum
+
+def cevap_analizi(cevaplar):
+    analiz = []
+    if len(cevaplar) > 0 and cevaplar[0] >= 4:
+        analiz.append("🚗 Araba kullanımınız yüksek, karbon ayak izinizi artırıyor.")
+    if len(cevaplar) > 1 and cevaplar[1] >= 4:
+        analiz.append("🥩 Et tüketiminiz fazla, bitkisel beslenmeye ağırlık verebilirsiniz.")
+    if len(cevaplar) > 2 and cevaplar[2] <= 2:
+        analiz.append("💡 Enerji tasarrufu konusunda gelişme sağlayabilirsiniz.")
+    if len(cevaplar) > 3 and cevaplar[3] <= 2:
+        analiz.append("♻️ Geri dönüşüm alışkanlığınızı artırmanız çevreye büyük katkı sağlar.")
+    if len(cevaplar) > 6 and cevaplar[6] <= 2:
+        analiz.append("🔌 Elektronik cihazları kullanmadığınızda kapatmak enerji tasarrufuna katkı sağlar.")
+    if not analiz:
+        analiz.append("🎉 Harika! Cevaplarınıza göre yaşam tarzınız oldukça çevreci görünüyor.")
+    return analiz
+
+@app.route("/senin-etkin", methods=["GET", "POST"])
+def senin_etkin():
+    if request.method == "POST":
+        test_turu = request.form.get("test_turu")
+        soru_sayisi = 7 if test_turu == "kisa" else 15
+        cevaplar = []
+        for i in range(1, soru_sayisi + 1):
+            val = request.form.get(f"soru{i}")
+            if val is None:
+                return render_template("senin_etkin.html", test_turu=test_turu, hata="Tüm soruları cevaplayınız.")
+            cevaplar.append(int(val))
+        if test_turu == "kisa":
+            karbon_ay, karbon_yil, su_ay, su_yil, oran, durum = hesapla_kisa(cevaplar)
+        else:
+            karbon_ay, karbon_yil, su_ay, su_yil, oran, durum = hesapla_detayli(cevaplar)
+        analizler = cevap_analizi(cevaplar)
+        sonuc = {
+            "puan_orani": oran,
+            "puan_text": durum,
+            "aciklama": f"Aylık su tüketimi: {su_ay} L • Yıllık su: {su_yil} L • Aylık karbon: {karbon_ay} kg CO₂ • Yıllık karbon: {karbon_yil} kg CO₂",
+            "tavsiyeler": analizler
+        }
+        return render_template("senin_etkin.html", test_turu=test_turu, sonuc=sonuc)
+    return render_template("senin_etkin.html", test_turu=None)
+
+if __name__ == "__main__":
+    app.run(debug=True)
